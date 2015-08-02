@@ -1,0 +1,32 @@
+#!/bin/sh
+
+log='logger -t yk-lock-gss'
+
+$log "YubiKey ${ACTION} event detected, scanning logged-in users..."
+
+for scr in `ps --no-headers up $( pgrep -f gnome-screensaver ) | awk '{ print $1":"$2 }'`; do
+  U=`echo $scr | awk -F: '{ print $1 }'`
+  $log "Checking user ${U}"
+
+  U_SS_PID=`echo $scr | awk -F: '{ print $2 }'`
+  U_HOME=`getent passwd ${U} | cut -d: -f6`
+  U_YK_SERIAL=`echo -n $(cat ${U_HOME}/.ykserial)`
+
+  if [ "x${U_YK_SERIAL}" = "x" ]; then
+	  $log "User ${U} has no YubiKey configured, skipping"
+  else
+    if [ "x${U_YK_SERIAL}" = "x${ID_SERIAL_SHORT}" ]; then
+      export `grep -z DBUS_SESSION_BUS_ADDRESS /proc/${U_SS_PID}/environ`
+	    case $ACTION in
+	    "add")
+	      $log "YubiKey for ${U} identified, unlocking his session!"
+	      su ${U} -c "qdbus org.gnome.ScreenSaver / SetActive false"
+	      ;;
+	    "remove")
+	      $log "YubiKey for ${U} identified, locking his session!"
+	      su ${U} -c "qdbus org.gnome.ScreenSaver / SetActive true"
+	      ;;
+	    esac
+    fi
+  fi
+done
