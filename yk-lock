@@ -1,0 +1,24 @@
+#!/bin/sh
+
+log='logger -t yk-lock'
+
+$log "YubiKey ${ACTION} event detected, scanning logged-in X.org users..."
+
+for U in `who -H | tail -n+2 | awk 'match($2, /^:/) { print $1 }'`; do
+  U_HOME=`getent passwd ${U} | cut -d: -f6`
+  U_YK_SERIAL=`ls ${U_HOME}/.yubico/challenge-* | sed -r 's/.*\-([0-9]+)/\1/' | awk '{ printf ("%010d", $0) }'`
+  if [ "x${U_YK_SERIAL}" = "x${ID_SERIAL_SHORT}" ]; then
+    $log "[${U}] YubiKey for ${U} identified, locking his session!"
+    case $ACTION in
+    "add")
+      ( su ${U} -c "XDG_SEAT_PATH=/org/freedesktop/DisplayManager/Seat0 dm-tool switch-to-user ${U}" && $log "[${U}] Session un-locked" ) || $log "[${U}] Session failed to un-lock!"
+      ;;
+    "remove")
+      ( su ${U} -c "XDG_SEAT_PATH=/org/freedesktop/DisplayManager/Seat0 dm-tool lock" && $log "[${U}] Session locked" ) || $log "[${U}] Session failed to lock!"
+      ;;
+     esac
+     break
+  else
+    $log "[${U}] No Yubikey, skipping"
+  fi
+done
